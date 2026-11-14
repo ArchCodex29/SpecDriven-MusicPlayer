@@ -1,0 +1,21 @@
+{
+  "name": "small-music-player",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/blueimp-md5": "^2.18.2",
+    "typescript": "^5.7.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "blueimp-md5": "^2.19.0"
+  }
+}

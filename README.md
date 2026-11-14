@@ -24,3 +24,24 @@ Once the core functionality described above is achieved, new features that impro
 In the spirit of this experiment, all features and bug fixes should be handled by the agent of choice by writing the associated specification, instead of me "intervening" and implementing the end result.
 
 For the spec-driven toolkit, I've chosen [OpenSpec](https://github.com/Fission-AI/OpenSpec) for it's promise of being a ligther toolkit (when compared with GitHub's SpecKit, for example) and on it's iterative philosophy.
+
+## Running locally
+
+Requires Node.js and npm.
+
+```sh
+npm install
+npm run dev
+npm run build
+npm test
+```
+
+`npm run dev` starts the Vite development server. `npm run build` type-checks and builds the static app, and `npm test` runs the Vitest suite.
+
+## MVP scope
+
+The client connects directly from the browser to one Subsonic-compatible server over HTTPS. It remembers only the server URL; login credentials are kept in memory and must be entered again after a reload. Users can select a music folder, browse its albums and their permitted playlists, and play a collection with standard transport and volume controls. Playlist editing, metadata management, server administration, and a backend proxy are out of scope.
+
+## Browser compatibility validation
+
+The configured Navidrome server reports version 0.64.0 and Subsonic API version 1.16.1. Browser requests from the local development app reached the REST and stream endpoints cross-origin. An authenticated smoke test confirmed first-visit setup, returning login, automatic selection of the server's only music folder, album browsing, and account-wide playlist loading. A playable album started successfully; pause/resume, next, previous, volume, and stop all worked. The test playlist contained no playable tracks, and playback correctly did not start for it. After login, browser storage contained only the server URL. No credentials were recorded.
