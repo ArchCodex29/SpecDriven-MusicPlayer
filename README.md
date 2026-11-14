@@ -42,6 +42,12 @@ npm test
 
 The client connects directly from the browser to one Subsonic-compatible server over HTTPS. It remembers only the server URL; login credentials are kept in memory and must be entered again after a reload. Users can select a music folder, browse its albums and their permitted playlists, and play a collection with standard transport and volume controls. Playlist editing, metadata management, server administration, and a backend proxy are out of scope.
 
+## Using the responsive player
+
+After signing in, Home provides direct choices for Albums and Playlists. When the account has multiple music folders, choose **Change library** from Home to switch folders without signing out. Album rows show the album title, artist, and available cover art; a placeholder is shown when art is missing or cannot be loaded.
+
+Starting an album or playlist opens the expanded player. Use **Minimize** to keep playback controls in a compact dock while returning to Home or browsing a library. Playback and its queue continue when the selected music folder changes. The expanded player keeps its controls at the bottom in portrait layouts and arranges them across a vertically centered control area in landscape layouts.
+
 ## Browser compatibility validation
 
 The configured Navidrome server reports version 0.64.0 and Subsonic API version 1.16.1. Browser requests from the local development app reached the REST and stream endpoints cross-origin. An authenticated smoke test confirmed first-visit setup, returning login, automatic selection of the server's only music folder, album browsing, and account-wide playlist loading. A playable album started successfully; pause/resume, next, previous, volume, and stop all worked. The test playlist contained no playable tracks, and playback correctly did not start for it. After login, browser storage contained only the server URL. No credentials were recorded.

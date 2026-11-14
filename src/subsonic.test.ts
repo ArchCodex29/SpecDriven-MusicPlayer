@@ -94,4 +94,21 @@ describe('Subsonic authentication', () => {
     expect(first.searchParams.has('p')).toBe(false);
     expect(first.href).not.toContain('private-password');
   });
+
+  it('creates authenticated cover-art URLs with a bounded thumbnail size', () => {
+    const client = new SubsonicClient('https://music.example/', {
+      username: 'joe',
+      password: 'private-password'
+    }, {
+      createSalt: () => 'cover-salt'
+    });
+
+    const coverArt = new URL(client.createCoverArtUrl('cover-1'));
+    expect(coverArt.pathname).toBe('/rest/getCoverArt.view');
+    expect(coverArt.searchParams.get('id')).toBe('cover-1');
+    expect(coverArt.searchParams.get('size')).toBe('160');
+    expect(coverArt.searchParams.get('s')).toBe('cover-salt');
+    expect(coverArt.href).not.toContain('private-password');
+    expect(() => client.createCoverArtUrl('cover-1', 0)).toThrow(RangeError);
+  });
 });

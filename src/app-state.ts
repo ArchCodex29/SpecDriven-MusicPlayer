@@ -1,22 +1,34 @@
 import type { Album, MusicFolder, Playlist } from './subsonic';
-import type { PlaybackState } from './playback-state';
 
 export type AppScreen =
   | { kind: 'server-setup'; serverUrl?: string; error?: string }
   | { kind: 'login'; serverUrl: string; error?: string; busy?: boolean }
-  | { kind: 'folder-selection'; serverUrl: string; folders: MusicFolder[] }
+  | {
+      kind: 'folder-selection';
+      serverUrl: string;
+      folders: MusicFolder[];
+      returnTo?: HomeScreen;
+    }
   | { kind: 'no-folders'; serverUrl: string }
   | { kind: 'loading-collection'; serverUrl: string; folder: MusicFolder; title: string; returnTo: BrowseScreen }
-  | { kind: 'playing'; collectionTitle: string; queue: PlaybackState; returnTo: BrowseScreen }
+  | HomeScreen
   | BrowseScreen;
 
 export type BrowseView = 'albums' | 'playlists';
 export type BrowseStatus = 'loading' | 'ready' | 'error';
 
+export interface HomeScreen {
+  kind: 'home';
+  serverUrl: string;
+  folder: MusicFolder;
+  folders: MusicFolder[];
+}
+
 export interface BrowseScreen {
   kind: 'browse';
   serverUrl: string;
   folder: MusicFolder;
+  folders: MusicFolder[];
   view: BrowseView;
   status: BrowseStatus;
   albums: Album[] | null;
@@ -48,6 +60,34 @@ export function resolveFolderSelection(folders: MusicFolder[]): FolderSelection 
     return { kind: 'empty' };
   }
   return { kind: 'choose', folders };
+}
+
+export function createHomeScreen(
+  serverUrl: string,
+  folder: MusicFolder,
+  folders: MusicFolder[]
+): HomeScreen {
+  return { kind: 'home', serverUrl, folder, folders: [...folders] };
+}
+
+export function createBrowseScreen(home: HomeScreen, view: BrowseView): BrowseScreen {
+  return {
+    kind: 'browse',
+    serverUrl: home.serverUrl,
+    folder: home.folder,
+    folders: home.folders,
+    view,
+    status: 'loading',
+    albums: null,
+    playlists: null
+  };
+}
+
+export function selectMusicFolder(home: HomeScreen, folder: MusicFolder): HomeScreen {
+  if (!home.folders.some((availableFolder) => availableFolder.id === folder.id)) {
+    throw new Error('The selected music folder is not available.');
+  }
+  return { ...home, folder };
 }
 
 export function switchBrowseView(screen: BrowseScreen, view: BrowseView): BrowseScreen {

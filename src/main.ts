@@ -1,10 +1,14 @@
 import {
+  createBrowseScreen,
+  createHomeScreen,
   getInitialScreen,
   resolveFolderSelection,
+  selectMusicFolder,
   switchBrowseView,
   type AppScreen,
   type BrowseScreen,
-  type BrowseView
+  type BrowseView,
+  type HomeScreen
 } from './app-state';
 import {
   advanceAfterTrackEnd,
@@ -15,6 +19,7 @@ import {
   setPlaybackVolume,
   type PlaybackState
 } from './playback-state';
+import { renderAlbumArtwork as renderAlbumArtworkMarkup } from './library-ui';
 import { loadServerUrl, normalizeServerUrl, saveServerUrl } from './storage';
 import {
   SubsonicClient,
@@ -36,6 +41,8 @@ let client: SubsonicClient | undefined;
 let libraryRequestId = 0;
 let collectionRequestId = 0;
 let playbackAttemptId = 0;
+let playback: { collectionTitle: string; queue: PlaybackState } | undefined;
+let playerExpanded = false;
 const audio = new Audio();
 audio.preload = 'none';
 audio.crossOrigin = 'anonymous';
@@ -58,9 +65,15 @@ function render(): void {
     return;
   }
 
+  if (playback && playerExpanded) {
+    document.body.classList.remove('has-mini-player');
+    app.innerHTML = renderExpandedPlayer();
+    return;
+  }
+
   if (screen.kind === 'server-setup') {
     const serverUrl = escapeHtml(screen.serverUrl ?? '');
-    app.innerHTML = `
+    setAppMarkup(`
       <section class="app-shell" aria-labelledby="app-title">
         <p class="eyebrow">Small Music Player</p>
         <h1 id="app-title">Connect your server</h1>
@@ -72,12 +85,12 @@ function render(): void {
           <button type="submit">Continue to login</button>
         </form>
       </section>
-    `;
+    `);
     return;
   }
 
   if (screen.kind === 'login') {
-    app.innerHTML = `
+    setAppMarkup(`
       <section class="app-shell" aria-labelledby="app-title">
         <p class="eyebrow">Small Music Player</p>
         <h1 id="app-title">Sign in</h1>
@@ -92,12 +105,12 @@ function render(): void {
         </form>
         <button class="secondary-button" type="button" data-action="back-to-server" ${screen.busy ? 'disabled' : ''}>Back to server setup</button>
       </section>
-    `;
+    `);
     return;
   }
 
   if (screen.kind === 'folder-selection') {
-    app.innerHTML = `
+    setAppMarkup(`
       <section class="app-shell" aria-labelledby="app-title">
         <p class="eyebrow">Small Music Player</p>
         <h1 id="app-title">Choose a music folder</h1>
@@ -107,42 +120,65 @@ function render(): void {
             <li><button type="button" class="folder-button" data-action="select-folder" data-folder-id="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</button></li>
           `).join('')}
         </ul>
-        <button class="secondary-button" type="button" data-action="back-to-login">Back to login</button>
+        <button class="secondary-button" type="button" data-action="${screen.returnTo ? 'back-to-home' : 'back-to-login'}">${screen.returnTo ? 'Back to Home' : 'Back to login'}</button>
       </section>
-    `;
+    `);
     return;
   }
 
   if (screen.kind === 'no-folders') {
-    app.innerHTML = `
+    setAppMarkup(`
       <section class="app-shell" aria-labelledby="app-title">
         <p class="eyebrow">Small Music Player</p>
         <h1 id="app-title">No music folders found</h1>
         <p class="description">This account has no music folders available on the server.</p>
         <button type="button" data-action="back-to-login">Back to login</button>
       </section>
-    `;
+    `);
     return;
   }
 
   if (screen.kind === 'loading-collection') {
-    app.innerHTML = `
+    setAppMarkup(`
       <section class="app-shell" aria-labelledby="app-title">
         <p class="eyebrow">Small Music Player</p>
         <h1 id="app-title">Loading ${escapeHtml(screen.title)}</h1>
         <p class="description" role="status">Loading tracks…</p>
         <button class="secondary-button" type="button" data-action="cancel-collection">Back to library</button>
       </section>
-    `;
+    `);
     return;
   }
 
-  if (screen.kind === 'playing') {
-    renderPlayingScreen();
-    return;
+  if (screen.kind === 'home') {
+    renderHomeScreen(screen);
+  } else {
+    renderBrowseScreen(screen);
   }
+}
 
-  renderBrowseScreen(screen);
+function setAppMarkup(markup: string): void {
+  if (app) {
+    document.body.classList.toggle('has-mini-player', Boolean(playback));
+    app.innerHTML = `${markup}${playback ? renderMiniPlayer() : ''}`;
+  }
+}
+
+function renderHomeScreen(home: HomeScreen): void {
+  const canChangeLibrary = home.folders.length > 1;
+  setAppMarkup(`
+    <section class="app-shell home-shell" aria-labelledby="app-title">
+      <p class="eyebrow">Small Music Player</p>
+      <h1 id="app-title">Home</h1>
+      <p class="description">Library: <strong>${escapeHtml(home.folder.name)}</strong></p>
+      <nav class="home-actions" aria-label="Music library">
+        <button type="button" data-action="open-albums">Albums</button>
+        <button type="button" data-action="open-playlists">Playlists</button>
+        ${canChangeLibrary ? '<button class="secondary-button" type="button" data-action="change-library">Change library</button>' : ''}
+      </nav>
+      <button class="secondary-button" type="button" data-action="sign-out">Sign out</button>
+    </section>
+  `);
 }
 
 function renderBrowseScreen(browse: BrowseScreen): void {
@@ -161,44 +197,75 @@ function renderBrowseScreen(browse: BrowseScreen): void {
           ? `<p class="empty-state">No ${browse.view} available.</p>`
           : `<ul class="collection-list">${collectionItems.map((item) => renderCollectionItem(item, browse.view)).join('')}</ul>`;
 
-  app.innerHTML = `
+  setAppMarkup(`
     <section class="app-shell library-shell" aria-labelledby="app-title">
       <p class="eyebrow">Small Music Player</p>
       <div class="library-heading">
         <div>
-          <h1 id="app-title">Music library</h1>
-          <p class="description">Folder: <strong>${escapeHtml(browse.folder.name)}</strong></p>
+          <h1 id="app-title">${isAlbums ? 'Albums' : 'Playlists'}</h1>
         </div>
-        <button class="secondary-button back-button" type="button" data-action="back-to-login">Sign out</button>
+        <button class="secondary-button back-button" type="button" data-action="go-home">Home</button>
       </div>
-      <nav class="library-tabs" aria-label="Library views">
-        <button type="button" data-action="show-albums" aria-pressed="${isAlbums}">Albums</button>
-        <button type="button" data-action="show-playlists" aria-pressed="${!isAlbums}">Playlists</button>
-      </nav>
-      <h2>${isAlbums ? 'Albums' : 'Playlists'}</h2>
       ${browse.notice ? `<p class="error" role="alert">${escapeHtml(browse.notice)}</p>` : ''}
       ${collectionMarkup}
     </section>
-  `;
+  `);
 }
 
 function renderCollectionItem(item: Album | Playlist, view: BrowseView): string {
-  const subtitle = 'artist' in item && item.artist ? `<span>${escapeHtml(item.artist)}</span>` : '';
+  const isAlbum = 'artist' in item;
+  const subtitle = isAlbum
+    ? `<span class="collection-artist">${escapeHtml(item.artist || 'Unknown artist')}</span>`
+    : '';
+  const artwork = isAlbum ? renderAlbumArtwork(item) : '';
   const action = view === 'albums' ? 'play-album' : 'play-playlist';
-  return `<li><button type="button" class="collection-item" data-action="${action}" data-id="${escapeHtml(item.id)}" data-title="${escapeHtml(item.name)}"><strong>${escapeHtml(item.name)}</strong>${subtitle}</button></li>`;
+  return `<li><button type="button" class="collection-item${isAlbum ? ' album-row' : ''}" data-action="${action}" data-id="${escapeHtml(item.id)}" data-title="${escapeHtml(item.name)}">${artwork}<span class="collection-copy"><strong>${escapeHtml(item.name)}</strong>${subtitle}</span></button></li>`;
 }
 
-function renderPlayingScreen(): void {
-  if (!app || screen.kind !== 'playing') {
-    return;
-  }
+function renderAlbumArtwork(album: Album): string {
+  const coverArtUrl = album.coverArt && client
+    ? client.createCoverArtUrl(album.coverArt)
+    : undefined;
+  return renderAlbumArtworkMarkup(coverArtUrl);
+}
 
-  const { queue } = screen;
+function renderMiniPlayer(): string {
+  if (!playback) {
+    return '';
+  }
+  const { queue } = playback;
   const currentTrack = queue.tracks[queue.currentIndex];
   if (!currentTrack) {
     throw new Error('The playback queue has no active track.');
   }
+  const playLabel = queue.status === 'playing' ? 'Pause' : queue.status === 'loading' ? 'Loading' : 'Play';
+  const playAction = queue.status === 'error' ? 'retry-playback' : 'play-toggle';
+  return `
+    <aside class="mini-player" aria-label="Mini player">
+      <div class="mini-player-track">
+        <strong>${escapeHtml(currentTrack.title)}</strong>
+        <span>${escapeHtml(currentTrack.artist ?? playback.collectionTitle)}</span>
+      </div>
+      <div class="mini-player-controls" aria-label="Playback controls">
+        <button type="button" data-action="previous-track" aria-label="Previous track" ${queue.currentIndex === 0 ? 'disabled' : ''}>Previous</button>
+        <button type="button" data-action="${playAction}" ${queue.status === 'loading' ? 'disabled' : ''}>${queue.status === 'error' ? 'Retry' : playLabel}</button>
+        <button type="button" data-action="next-track" aria-label="Next track" ${queue.currentIndex + 1 >= queue.tracks.length ? 'disabled' : ''}>Next</button>
+        <button type="button" data-action="expand-player">Expand</button>
+        <button class="secondary-button" type="button" data-action="stop-playback">Stop</button>
+      </div>
+    </aside>
+  `;
+}
 
+function renderExpandedPlayer(): string {
+  if (!playback) {
+    return '';
+  }
+  const { queue } = playback;
+  const currentTrack = queue.tracks[queue.currentIndex];
+  if (!currentTrack) {
+    throw new Error('The playback queue has no active track.');
+  }
   const statusText: Record<typeof queue.status, string> = {
     loading: 'Loading track…',
     playing: 'Playing',
@@ -213,25 +280,32 @@ function renderPlayingScreen(): void {
         ? `<button type="button" data-action="retry-playback">Retry</button>`
         : `<button type="button" data-action="play-toggle">${queue.status === 'playing' ? 'Pause' : 'Play'}</button>`;
 
-  app.innerHTML = `
-    <section class="app-shell player-shell" aria-labelledby="app-title">
-      <p class="eyebrow">Now playing</p>
-      <h1 id="app-title">${escapeHtml(currentTrack.title)}</h1>
-      <p class="description">${escapeHtml(currentTrack.artist ?? screen.collectionTitle)} · ${escapeHtml(screen.collectionTitle)}</p>
-      <p class="playback-status ${queue.status === 'error' ? 'error' : ''}" role="${queue.status === 'error' ? 'alert' : 'status'}">${queue.status === 'error' ? escapeHtml(queue.error ?? 'The track could not be played.') : statusText[queue.status]}</p>
-      <div class="transport-controls" aria-label="Playback controls">
-        <button type="button" data-action="previous-track" ${queue.currentIndex === 0 ? 'disabled' : ''}>Previous</button>
-        ${controls}
-        <button type="button" data-action="next-track" ${queue.currentIndex + 1 >= queue.tracks.length ? 'disabled' : ''}>Next</button>
-        <button class="secondary-button" type="button" data-action="stop-playback">Stop</button>
+  return `
+    <section class="app-shell player-shell expanded-player" aria-labelledby="app-title">
+      <div class="player-layout">
+        <div class="player-information">
+          <p class="eyebrow">Now playing</p>
+          <h1 id="app-title">${escapeHtml(currentTrack.title)}</h1>
+          <p class="description">${escapeHtml(currentTrack.artist ?? playback.collectionTitle)} · ${escapeHtml(playback.collectionTitle)}</p>
+          <p class="playback-status ${queue.status === 'error' ? 'error' : ''}" role="${queue.status === 'error' ? 'alert' : 'status'}">${queue.status === 'error' ? escapeHtml(queue.error ?? 'The track could not be played.') : statusText[queue.status]}</p>
+          <h2>Queue</h2>
+          <ol class="queue-list">
+            ${queue.tracks.map((track, index) => `<li ${index === queue.currentIndex ? 'aria-current="true"' : ''}><span>${escapeHtml(track.title)}</span>${track.artist ? `<small>${escapeHtml(track.artist)}</small>` : ''}</li>`).join('')}
+          </ol>
+        </div>
+        <div class="player-control-area">
+          <div class="transport-controls" aria-label="Playback controls">
+            <button type="button" data-action="previous-track" aria-label="Previous track" ${queue.currentIndex === 0 ? 'disabled' : ''}>Previous</button>
+            ${controls}
+            <button type="button" data-action="next-track" aria-label="Next track" ${queue.currentIndex + 1 >= queue.tracks.length ? 'disabled' : ''}>Next</button>
+            <button class="secondary-button" type="button" data-action="stop-playback">Stop</button>
+            <button class="secondary-button" type="button" data-action="minimize-player">Minimize</button>
+          </div>
+          <label class="volume-control" for="volume">Volume
+            <input id="volume" data-action="volume" type="range" min="0" max="1" step="0.01" value="${queue.volume}" />
+          </label>
+        </div>
       </div>
-      <label class="volume-control" for="volume">Volume
-        <input id="volume" data-action="volume" type="range" min="0" max="1" step="0.01" value="${queue.volume}" />
-      </label>
-      <h2>Queue</h2>
-      <ol class="queue-list">
-        ${queue.tracks.map((track, index) => `<li ${index === queue.currentIndex ? 'aria-current="true"' : ''}><span>${escapeHtml(track.title)}</span>${track.artist ? `<small>${escapeHtml(track.artist)}</small>` : ''}</li>`).join('')}
-      </ol>
     </section>
   `;
 }
@@ -281,7 +355,7 @@ async function submitLoginForm(form: HTMLFormElement): Promise<void> {
     } else if (selection.kind === 'choose') {
       screen = { kind: 'folder-selection', serverUrl, folders: selection.folders };
     } else {
-      await openFolder(selection.folder, serverUrl);
+      openHome(serverUrl, selection.folder, folders);
     }
   } catch (error) {
     client = undefined;
@@ -290,17 +364,14 @@ async function submitLoginForm(form: HTMLFormElement): Promise<void> {
   render();
 }
 
-async function openFolder(folder: MusicFolder, serverUrl: string): Promise<void> {
-  const browse: BrowseScreen = {
-    kind: 'browse',
-    serverUrl,
-    folder,
-    view: 'albums',
-    status: 'loading',
-    albums: null,
-    playlists: null
-  };
-  await loadLibraryView(browse, 'albums');
+function openHome(serverUrl: string, folder: MusicFolder, folders: MusicFolder[]): void {
+  screen = createHomeScreen(serverUrl, folder, folders);
+  render();
+}
+
+function openLibrary(home: HomeScreen, view: BrowseView): void {
+  const browse = createBrowseScreen(home, view);
+  void loadLibraryView(browse, view);
 }
 
 async function loadLibraryView(
@@ -388,7 +459,9 @@ function beginPlayback(returnTo: BrowseScreen, title: string, tracks: Track[]): 
     render();
     return;
   }
-  screen = { kind: 'playing', collectionTitle: title, queue, returnTo };
+  screen = returnTo;
+  playback = { collectionTitle: title, queue };
+  playerExpanded = true;
   render();
   void loadCurrentTrack();
 }
@@ -396,15 +469,15 @@ function beginPlayback(returnTo: BrowseScreen, title: string, tracks: Track[]): 
 function updatePlayback(
   update: (queue: PlaybackState) => PlaybackState
 ): void {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
-  screen = { ...screen, queue: update(screen.queue) };
+  playback = { ...playback, queue: update(playback.queue) };
   render();
 }
 
 async function loadCurrentTrack(): Promise<void> {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
   if (!client) {
@@ -412,15 +485,15 @@ async function loadCurrentTrack(): Promise<void> {
     return;
   }
 
-  const currentScreen = screen;
-  const track = currentScreen.queue.tracks[currentScreen.queue.currentIndex];
+  const currentPlayback = playback;
+  const track = currentPlayback.queue.tracks[currentPlayback.queue.currentIndex];
   if (!track) {
     reportPlaybackFailure('The current track is unavailable.');
     return;
   }
   const attemptId = ++playbackAttemptId;
-  const queue = setPlaybackStatus(currentScreen.queue, 'loading');
-  screen = { ...currentScreen, queue };
+  const queue = setPlaybackStatus(currentPlayback.queue, 'loading');
+  playback = { ...currentPlayback, queue };
   render();
   audio.pause();
   audio.src = client.createStreamUrl(track.id);
@@ -430,8 +503,8 @@ async function loadCurrentTrack(): Promise<void> {
     await audio.play();
     if (
       attemptId === playbackAttemptId &&
-      screen.kind === 'playing' &&
-      screen.queue.currentIndex === queue.currentIndex
+      playback &&
+      playback.queue.currentIndex === queue.currentIndex
     ) {
       updatePlayback((current) => setPlaybackStatus(current, 'playing'));
     }
@@ -443,11 +516,11 @@ async function loadCurrentTrack(): Promise<void> {
 }
 
 async function resumePlayback(): Promise<void> {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
 
-  if (screen.queue.status === 'ended') {
+  if (playback.queue.status === 'ended') {
     audio.currentTime = 0;
     await loadCurrentTrack();
     return;
@@ -457,7 +530,7 @@ async function resumePlayback(): Promise<void> {
   updatePlayback((queue) => setPlaybackStatus(queue, 'loading'));
   try {
     await audio.play();
-    if (attemptId === playbackAttemptId && screen.kind === 'playing') {
+    if (attemptId === playbackAttemptId && playback) {
       updatePlayback((queue) => setPlaybackStatus(queue, 'playing'));
     }
   } catch (error) {
@@ -468,75 +541,82 @@ async function resumePlayback(): Promise<void> {
 }
 
 function pausePlayback(): void {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
   playbackAttemptId += 1;
-  screen = {
-    ...screen,
-    queue: setPlaybackStatus(screen.queue, 'paused')
-  };
+  playback = { ...playback, queue: setPlaybackStatus(playback.queue, 'paused') };
   audio.pause();
   render();
 }
 
 function reportPlaybackFailure(message: string): void {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
   playbackAttemptId += 1;
-  screen = {
-    ...screen,
-    queue: setPlaybackStatus(screen.queue, 'error', message)
-  };
+  playback = { ...playback, queue: setPlaybackStatus(playback.queue, 'error', message) };
   render();
 }
 
 function navigatePlayback(direction: 'next' | 'previous'): void {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
   const queue =
-    direction === 'next' ? nextTrack(screen.queue) : previousTrack(screen.queue);
-  if (queue.currentIndex !== screen.queue.currentIndex) {
-    screen = { ...screen, queue };
+    direction === 'next' ? nextTrack(playback.queue) : previousTrack(playback.queue);
+  if (queue.currentIndex !== playback.queue.currentIndex) {
+    playback = { ...playback, queue };
     void loadCurrentTrack();
   }
 }
 
 function stopPlayback(): void {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
   playbackAttemptId += 1;
-  collectionRequestId += 1;
-  const returnTo = screen.returnTo;
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
-  screen = returnTo;
+  playback = undefined;
+  playerExpanded = false;
+  render();
+}
+
+function signOut(serverUrl: string): void {
+  playbackAttemptId += 1;
+  libraryRequestId += 1;
+  collectionRequestId += 1;
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  playback = undefined;
+  playerExpanded = false;
+  client = undefined;
+  screen = { kind: 'login', serverUrl };
   render();
 }
 
 audio.addEventListener('playing', () => {
-  if (screen.kind === 'playing' && screen.queue.status === 'loading') {
+  if (playback?.queue.status === 'loading') {
     updatePlayback((queue) => setPlaybackStatus(queue, 'playing'));
   }
 });
 
 audio.addEventListener('pause', () => {
-  if (screen.kind === 'playing' && screen.queue.status === 'playing') {
+  if (playback?.queue.status === 'playing') {
     updatePlayback((queue) => setPlaybackStatus(queue, 'paused'));
   }
 });
 
 audio.addEventListener('ended', () => {
-  if (screen.kind !== 'playing') {
+  if (!playback) {
     return;
   }
-  const oldIndex = screen.queue.currentIndex;
-  const queue = advanceAfterTrackEnd(screen.queue);
-  screen = { ...screen, queue };
+  const oldIndex = playback.queue.currentIndex;
+  const queue = advanceAfterTrackEnd(playback.queue);
+  playback = { ...playback, queue };
   render();
   if (queue.currentIndex !== oldIndex) {
     void loadCurrentTrack();
@@ -575,24 +655,43 @@ app.addEventListener('click', (event) => {
     render();
   } else if (
     button.dataset.action === 'back-to-login' &&
-    (screen.kind === 'folder-selection' || screen.kind === 'no-folders' || screen.kind === 'browse')
+    (screen.kind === 'folder-selection' || screen.kind === 'no-folders')
   ) {
     client = undefined;
     libraryRequestId += 1;
     screen = { kind: 'login', serverUrl: screen.serverUrl };
     render();
+  } else if (button.dataset.action === 'back-to-home' && screen.kind === 'folder-selection' && screen.returnTo) {
+    screen = screen.returnTo;
+    render();
   } else if (button.dataset.action === 'select-folder' && screen.kind === 'folder-selection') {
     const folder = screen.folders.find((item) => item.id === button.dataset.folderId);
     if (folder) {
-      void openFolder(folder, screen.serverUrl);
+      const home = screen.returnTo
+        ? selectMusicFolder(screen.returnTo, folder)
+        : createHomeScreen(screen.serverUrl, folder, screen.folders);
+      libraryRequestId += 1;
+      screen = home;
+      render();
     }
   } else if (
-    (button.dataset.action === 'show-albums' || button.dataset.action === 'show-playlists') &&
+    (button.dataset.action === 'open-albums' || button.dataset.action === 'open-playlists') &&
+    screen.kind === 'home'
+  ) {
+    openLibrary(screen, button.dataset.action === 'open-albums' ? 'albums' : 'playlists');
+  } else if (button.dataset.action === 'change-library' && screen.kind === 'home') {
+    screen = { kind: 'folder-selection', serverUrl: screen.serverUrl, folders: screen.folders, returnTo: screen };
+    render();
+  } else if (button.dataset.action === 'go-home' && screen.kind === 'browse') {
+    libraryRequestId += 1;
+    screen = createHomeScreen(screen.serverUrl, screen.folder, screen.folders);
+    render();
+  } else if (button.dataset.action === 'sign-out' && screen.kind === 'home') {
+    signOut(screen.serverUrl);
+  } else if (
+    button.dataset.action === 'retry-library' &&
     screen.kind === 'browse'
   ) {
-    const view = button.dataset.action === 'show-albums' ? 'albums' : 'playlists';
-    void loadLibraryView(screen, view);
-  } else if (button.dataset.action === 'retry-library' && screen.kind === 'browse') {
     void loadLibraryView(screen, screen.view, true);
   } else if (
     (button.dataset.action === 'play-album' || button.dataset.action === 'play-playlist') &&
@@ -612,33 +711,50 @@ app.addEventListener('click', (event) => {
     collectionRequestId += 1;
     screen = screen.returnTo;
     render();
-  } else if (button.dataset.action === 'play-toggle' && screen.kind === 'playing') {
-    if (screen.queue.status === 'playing') {
+  } else if (button.dataset.action === 'play-toggle' && playback) {
+    if (playback.queue.status === 'playing') {
       pausePlayback();
-    } else if (screen.queue.status === 'paused' || screen.queue.status === 'ended') {
+    } else if (playback.queue.status === 'paused' || playback.queue.status === 'ended') {
       void resumePlayback();
     }
-  } else if (button.dataset.action === 'retry-playback' && screen.kind === 'playing') {
+  } else if (button.dataset.action === 'retry-playback' && playback) {
     void loadCurrentTrack();
-  } else if (button.dataset.action === 'next-track' && screen.kind === 'playing') {
+  } else if (button.dataset.action === 'next-track' && playback) {
     navigatePlayback('next');
-  } else if (button.dataset.action === 'previous-track' && screen.kind === 'playing') {
+  } else if (button.dataset.action === 'previous-track' && playback) {
     navigatePlayback('previous');
-  } else if (button.dataset.action === 'stop-playback' && screen.kind === 'playing') {
+  } else if (button.dataset.action === 'stop-playback' && playback) {
     stopPlayback();
+  } else if (button.dataset.action === 'expand-player' && playback) {
+    playerExpanded = true;
+    render();
+  } else if (button.dataset.action === 'minimize-player' && playback) {
+    playerExpanded = false;
+    render();
   }
 });
+
+app.addEventListener('error', (event) => {
+  if (!(event.target instanceof HTMLImageElement) || !event.target.matches('.album-art-image')) {
+    return;
+  }
+  event.target.hidden = true;
+  const placeholder = event.target.parentElement?.querySelector<HTMLElement>('.album-art-placeholder');
+  if (placeholder) {
+    placeholder.hidden = false;
+  }
+}, true);
 
 app.addEventListener('input', (event) => {
   if (
     !(event.target instanceof HTMLInputElement) ||
     event.target.dataset.action !== 'volume' ||
-    screen.kind !== 'playing'
+    !playback
   ) {
     return;
   }
-  const queue = setPlaybackVolume(screen.queue, Number(event.target.value));
-  screen = { ...screen, queue };
+  const queue = setPlaybackVolume(playback.queue, Number(event.target.value));
+  playback = { ...playback, queue };
   audio.volume = queue.volume;
 });
 

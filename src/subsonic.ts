@@ -252,6 +252,16 @@ export class SubsonicClient {
     return this.createRequestUrl('stream', { id: trackId }).href;
   }
 
+  createCoverArtUrl(coverArtId: string, size = 160): string {
+    if (!Number.isInteger(size) || size <= 0) {
+      throw new RangeError('Cover-art size must be a positive integer.');
+    }
+    return this.createRequestUrl('getCoverArt', {
+      id: coverArtId,
+      size: String(size)
+    }).href;
+  }
+
   private async request(
     method: string,
     parameters: Record<string, string> = {}
