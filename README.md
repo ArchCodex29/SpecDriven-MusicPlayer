@@ -38,6 +38,20 @@ npm test
 
 `npm run dev` starts the Vite development server. `npm run build` type-checks and builds the static app, and `npm test` runs the Vitest suite.
 
+## Using the VS Code Dev Container
+
+The Dev Container provides Node.js 26.1.0, npm 12.2.2, OpenSpec CLI 2.0.0, and installs the project dependencies from `package-lock.json`. On the host, install VS Code, Docker, and the Dev Containers extension. Open this repository in VS Code and run **Dev Containers: Reopen in Container**; the first build installs the pinned tools and runs `npm ci`.
+
+The container also installs the GitHub Copilot and Copilot Chat extensions. Sign in to GitHub through VS Code to use Copilot Chat and the OpenSpec skills already checked into `.agents/skills`; do not add credentials to the container or repository.
+
+Run the app inside the container with:
+
+```sh
+npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
+```
+
+Port 5173 is forwarded to the host. Use the forwarded-port notification in VS Code to open the app in a host browser. Build and test from the integrated terminal with `npm run build` and `npm test`.
+
 ## MVP scope
 
 The client connects directly from the browser to one Subsonic-compatible server over HTTPS. It remembers only the server URL; login credentials are kept in memory and must be entered again after a reload. Users can select a music folder, browse its albums and their permitted playlists, and play a collection with standard transport and volume controls. Playlist editing, metadata management, server administration, and a backend proxy are out of scope.
