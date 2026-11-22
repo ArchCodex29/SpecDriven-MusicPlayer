@@ -41,6 +41,7 @@ let client: SubsonicClient | undefined;
 let libraryRequestId = 0;
 let collectionRequestId = 0;
 let playbackAttemptId = 0;
+let preparedTrackId: string | undefined;
 let playback: { collectionTitle: string; queue: PlaybackState } | undefined;
 let playerExpanded = false;
 const audio = new Audio();
@@ -459,11 +460,13 @@ function beginPlayback(returnTo: BrowseScreen, title: string, tracks: Track[]): 
     render();
     return;
   }
+  playbackAttemptId += 1;
+  audio.pause();
+  preparedTrackId = undefined;
   screen = returnTo;
   playback = { collectionTitle: title, queue };
   playerExpanded = true;
   render();
-  void loadCurrentTrack();
 }
 
 function updatePlayback(
@@ -498,6 +501,7 @@ async function loadCurrentTrack(): Promise<void> {
   audio.pause();
   audio.src = client.createStreamUrl(track.id);
   audio.volume = queue.volume;
+  preparedTrackId = track.id;
 
   try {
     await audio.play();
@@ -522,6 +526,12 @@ async function resumePlayback(): Promise<void> {
 
   if (playback.queue.status === 'ended') {
     audio.currentTime = 0;
+    await loadCurrentTrack();
+    return;
+  }
+
+  const currentTrack = playback.queue.tracks[playback.queue.currentIndex];
+  if (!currentTrack || preparedTrackId !== currentTrack.id) {
     await loadCurrentTrack();
     return;
   }
@@ -579,6 +589,7 @@ function stopPlayback(): void {
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
+  preparedTrackId = undefined;
   playback = undefined;
   playerExpanded = false;
   render();
@@ -591,6 +602,7 @@ function signOut(serverUrl: string): void {
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
+  preparedTrackId = undefined;
   playback = undefined;
   playerExpanded = false;
   client = undefined;

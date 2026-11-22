@@ -16,11 +16,11 @@ const tracks: Track[] = [
 ];
 
 describe('playback queue', () => {
-  it('preserves server order and starts at the first track', () => {
+  it('preserves server order and initializes paused at the first track', () => {
     expect(createPlaybackQueue(tracks)).toMatchObject({
       tracks,
       currentIndex: 0,
-      status: 'loading'
+      status: 'paused'
     });
   });
 
@@ -41,12 +41,13 @@ describe('playback queue', () => {
     expect(advanceAfterTrackEnd(advanceAfterTrackEnd(second)).status).toBe('ended');
   });
 
-  it('represents pause, play, and media failures explicitly', () => {
+  it('can start explicitly from a paused queue and report media failures', () => {
     const queue = createPlaybackQueue(tracks);
     if (!queue) {
       throw new Error('Expected a non-empty queue.');
     }
 
+    expect(queue.status).toBe('paused');
     expect(setPlaybackStatus(queue, 'playing').status).toBe('playing');
     expect(setPlaybackStatus(queue, 'paused').status).toBe('paused');
     const failed = setPlaybackStatus(queue, 'error', 'Stream failed');

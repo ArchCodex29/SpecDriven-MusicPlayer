@@ -17,7 +17,7 @@ export function createPlaybackQueue(tracks: Track[]): PlaybackState | null {
   return {
     tracks: [...tracks],
     currentIndex: 0,
-    status: 'loading',
+    status: 'paused',
     volume: 0.8
   };
 }
