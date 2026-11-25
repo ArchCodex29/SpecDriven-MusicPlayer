@@ -19,4 +19,4 @@
 
 ## 4. Publishing integration
 
-- [ ] 4.1 Verify a default-branch update deploys Pages, a matching SemVer tag publishes the matching ZIP, a mismatched tag does not publish, and a pull request only runs validation.
+- [x] 4.1 Verify a default-branch update deploys Pages, a matching SemVer tag publishes the matching ZIP, a mismatched tag does not publish, and a pull request only runs validation.
