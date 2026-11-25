@@ -1,0 +1,91 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      matches: ${{ steps.check.outputs.matches }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check tag against package version
+        id: check
+        shell: bash
+        run: |
+          version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
+          if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            && [[ "$GITHUB_REF_NAME" == "v$version" ]]; then
+            echo "matches=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "matches=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag $GITHUB_REF_NAME does not match package version $version; skipping release."
+          fi
+
+  build:
+    needs: check-tag
+    if: needs.check-tag.outputs.matches == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build static app
+        run: npm run build
+
+      - name: Check static hosting paths
+        run: npm run check:static
+
+      - name: Package static app
+        run: |
+          asset_name="small-music-player-${GITHUB_REF_NAME}.zip"
+          (cd dist && zip -qr "$GITHUB_WORKSPACE/$asset_name" .)
+          unzip -t "$asset_name"
+          mkdir "$RUNNER_TEMP/release-zip"
+          unzip -q "$asset_name" -d "$RUNNER_TEMP/release-zip"
+          test -f "$RUNNER_TEMP/release-zip/index.html"
+          node scripts/check-static-output.mjs "$RUNNER_TEMP/release-zip"
+
+      - name: Upload release ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-client-zip
+          path: small-music-player-*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: static-client-zip
+          path: release
+
+      - name: Attach ZIP to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/*.zip --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
