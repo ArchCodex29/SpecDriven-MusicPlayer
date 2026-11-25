@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to publish (for example v0.1.0)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -13,30 +19,40 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matches: ${{ steps.check.outputs.matches }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Check tag against package version
         id: check
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
-          if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
-            && [[ "$GITHUB_REF_NAME" == "v$version" ]]; then
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            && [[ "$RELEASE_TAG" == "v$version" ]]; then
             echo "matches=true" >> "$GITHUB_OUTPUT"
           else
             echo "matches=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Tag $GITHUB_REF_NAME does not match package version $version; skipping release."
+            echo "::notice::Tag $RELEASE_TAG does not match package version $version; skipping release."
           fi
 
   build:
     needs: check-tag
     if: needs.check-tag.outputs.matches == 'true'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.check-tag.outputs.release_tag }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.release_tag }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -58,7 +74,7 @@ jobs:
 
       - name: Package static app
         run: |
-          asset_name="small-music-player-${GITHUB_REF_NAME}.zip"
+          asset_name="small-music-player-${RELEASE_TAG}.zip"
           (cd dist && zip -qr "$GITHUB_WORKSPACE/$asset_name" .)
           unzip -t "$asset_name"
           mkdir "$RUNNER_TEMP/release-zip"
@@ -74,11 +90,18 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [check-tag, build]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.check-tag.outputs.release_tag }}
     permissions:
       contents: write
     steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-tag.outputs.release_tag }}
+
       - name: Download release ZIP
         uses: actions/download-artifact@v4
         with:
@@ -88,4 +111,4 @@ jobs:
       - name: Attach ZIP to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/*.zip --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$RELEASE_TAG" release/*.zip --verify-tag --title "$RELEASE_TAG" --generate-notes

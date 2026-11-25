@@ -8,7 +8,7 @@
 ## 2. GitHub Pages publishing
 
 - [x] 2.1 Add pull-request and default-branch validation that installs locked dependencies, runs tests, and builds without publishing from pull requests; verify the workflow's event and permission configuration.
-- [ ] 2.2 Add default-branch GitHub Pages deployment with least-privilege workflow permissions and verify the deployed URL loads the app and assets.
+- [x] 2.2 Add default-branch GitHub Pages deployment with least-privilege workflow permissions and verify the deployed URL loads the app and assets.
 - [x] 2.3 Document the Pages demo, repository Pages setup, bring-your-own HTTPS Subsonic server, and CORS requirement in the README; verify the setup steps match the workflow.
 
 ## 3. Versioned static releases
