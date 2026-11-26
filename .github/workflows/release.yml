@@ -72,6 +72,9 @@ jobs:
       - name: Check static hosting paths
         run: npm run check:static
 
+      - name: Build Chromium extension
+        run: npm run build:extension
+
       - name: Package static app
         run: |
           asset_name="small-music-player-${RELEASE_TAG}.zip"
@@ -82,11 +85,24 @@ jobs:
           test -f "$RUNNER_TEMP/release-zip/index.html"
           node scripts/check-static-output.mjs "$RUNNER_TEMP/release-zip"
 
-      - name: Upload release ZIP
+      - name: Package Chromium extension
+        run: |
+          asset_name="small-music-player-extension-${RELEASE_TAG}.zip"
+          (cd dist-extension && zip -qr "$GITHUB_WORKSPACE/$asset_name" .)
+          unzip -t "$asset_name"
+          unzip -q "$asset_name" -d "$RUNNER_TEMP/extension-zip"
+          test -f "$RUNNER_TEMP/extension-zip/index.html"
+          test -f "$RUNNER_TEMP/extension-zip/manifest.json"
+          test -f "$RUNNER_TEMP/extension-zip/background.js"
+          node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));' "$RUNNER_TEMP/extension-zip/manifest.json"
+
+      - name: Upload release ZIPs
         uses: actions/upload-artifact@v4
         with:
-          name: static-client-zip
-          path: small-music-player-*.zip
+          name: release-zips
+          path: |
+            small-music-player-v*.zip
+            small-music-player-extension-v*.zip
           if-no-files-found: error
 
   publish:
@@ -102,13 +118,13 @@ jobs:
         with:
           ref: ${{ needs.check-tag.outputs.release_tag }}
 
-      - name: Download release ZIP
+      - name: Download release ZIPs
         uses: actions/download-artifact@v4
         with:
-          name: static-client-zip
+          name: release-zips
           path: release
 
-      - name: Attach ZIP to GitHub Release
+      - name: Attach ZIPs to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$RELEASE_TAG" release/*.zip --verify-tag --title "$RELEASE_TAG" --generate-notes

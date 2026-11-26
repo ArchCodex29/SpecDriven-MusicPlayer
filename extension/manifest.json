@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Small Music Player",
+  "description": "Open a bundled Subsonic-compatible music player.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Open Small Music Player"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "optional_host_permissions": [
+    "https://*/*"
+  ]
+}

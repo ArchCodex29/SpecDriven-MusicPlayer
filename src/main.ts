@@ -21,6 +21,7 @@ import {
 } from './playback-state';
 import { renderAlbumArtwork as renderAlbumArtworkMarkup } from './library-ui';
 import { loadServerUrl, normalizeServerUrl, saveServerUrl } from './storage';
+import { ensureServerPermission } from './extension';
 import {
   SubsonicClient,
   type Album,
@@ -346,6 +347,11 @@ async function submitLoginForm(form: HTMLFormElement): Promise<void> {
   render();
 
   try {
+    const permissionGranted = await ensureServerPermission(serverUrl);
+    if (!permissionGranted) {
+      throw new Error('Server access permission is required to connect. Allow access for this server and try again.');
+    }
+
     const candidate = new SubsonicClient(serverUrl, { username, password });
     await candidate.ping();
     client = candidate;

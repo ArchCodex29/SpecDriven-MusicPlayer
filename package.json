@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:extension": "tsc --noEmit && vite build --outDir dist-extension --base ./ && node scripts/package-extension.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "check:static": "node scripts/check-static-output.mjs"

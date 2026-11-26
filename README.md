@@ -56,6 +56,20 @@ python3 -m http.server 8000 --directory small-music-player
 
 Then open `http://localhost:8000/`. Opening `index.html` directly as a `file://` URL is not supported. When connecting to a Subsonic-compatible server, the browser still connects directly to that server; it must be reachable over HTTPS and allow the origin serving this client through CORS.
 
+## Download the Chromium extension
+
+Matching releases include a second asset named `small-music-player-extension-vX.Y.Z.zip`. The extension bundle is a Chromium extension, not a directly installable ZIP:
+
+1. Download and extract `small-music-player-extension-vX.Y.Z.zip`.
+2. Open Chromium's extension management page and enable **Developer mode**.
+3. Click **Load unpacked** and select the extracted folder.
+4. Click the Small Music Player toolbar action to open the player in a tab.
+5. Enter an HTTPS Subsonic server URL and continue to sign in. Chromium may prompt for permission for that server only after you explicitly submit the sign-in; deny the prompt to cancel the connection.
+
+The extension does not run on ordinary webpages and does not request unrelated host access at installation. The server must be reachable over HTTPS and support the browser requests made by the player. When a new release is published, download and extract the new ZIP, then use **Load unpacked** for the updated folder or reload the existing unpacked extension from Chrome's extension management page.
+
+From a source checkout, `npm run build:extension` creates the loadable unpacked extension in `dist-extension/`.
+
 ## Using the VS Code Dev Container
 
 The Dev Container provides Node.js 26.1.0, npm 12.2.2, OpenSpec CLI 2.0.0, and installs the project dependencies from `package-lock.json`. On the host, install VS Code, Docker, and the Dev Containers extension. Open this repository in VS Code and run **Dev Containers: Reopen in Container**; the first build installs the pinned tools and runs `npm ci`.
